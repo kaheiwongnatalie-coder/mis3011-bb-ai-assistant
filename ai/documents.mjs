@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { parsePosted, validTime } from '../core/time.mjs';
+import { extractDeadline, parsePosted, validTime } from '../core/time.mjs';
 
 export const hash = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex').slice(0, 20);
 const flatten = value => typeof value === 'string' ? value : Array.isArray(value) ? value.map(flatten).join('\n') : value && typeof value === 'object' ? Object.values(value).map(flatten).join('\n') : '';
@@ -29,11 +29,30 @@ export function buildDocuments(feed) {
     }));
     for (const [pi, page] of course.pages.entries()) for (const [ri, row] of page.rows.entries()) {
       if (!row.body?.trim()) continue;
-      const link = row.links.find(l => /uploadAssignment|launchAssessment/.test(l.u)) || row.links[0];
+      const assessment = row.links.find(l => /uploadAssignment|launchAssessment/.test(l.u));
+      const link = assessment || row.links[0];
       const contentId = link && new URL(link.u).searchParams.get('content_id');
-      result.push(prepareDocument({ id: `${course.code}:${term}:content:${contentId || hash([page.u, row.title])}`,
+      const document = prepareDocument({ id: `${course.code}:${term}:content:${contentId || hash([page.u, row.title])}`,
         courseCode: course.code, term, title: row.title, text: `${row.title}\n${row.body}`,
-        sourcePath: `courses/${course.code}.json`, locator: `pages[${pi}].rows[${ri}]`, contentId, type: 'content' }));
+        sourcePath: `courses/${course.code}.json`, locator: `pages[${pi}].rows[${ri}]`, contentId, type: 'content' });
+      if (assessment && !/last year|practice|solution|answer/i.test(`${page.n} ${row.title}`)) {
+        const candidates = [{ text: row.body, sourcePath: document.sourcePath, locator: document.locator }];
+        for (const ref of row.links) {
+          const file = (feed.attachments[course.code] || []).find(a => a.sourceUrl === ref.u && a.contentFile && !/answer|solution/i.test(a.name));
+          if (file) candidates.push({text: flatten(feed.texts[file.contentFile]), sourcePath: file.contentFile, locator: file.name});
+        }
+        const evidence = candidates.flatMap(candidate => candidate.text.split('\n').flatMap(quote => {
+          if (!/\b(?:due\s+(?:at|on|by)|deadline\s*[:：]|submission deadline\s+is)\b|\bdeadline\s*[:：]/i.test(quote) ||
+              /\blate submission\b.*\bdue\b|\bafter the deadline\b/i.test(quote)) return [];
+          const deadline = extractDeadline(quote, term);
+          return deadline ? [{ deadline, quote: quote.trim(), path: candidate.sourcePath, locator: candidate.locator }] : [];
+        }));
+        const first = evidence.find(e => e.deadline.at) || evidence[0];
+        if (first && evidence.every(e => e.deadline.date === first.deadline.date && (!e.deadline.at || e.deadline.at === first.deadline.at))) {
+          document.assessment = { kind: /launchAssessment/.test(assessment.u) ? 'quiz' : 'assignment', ...first };
+        }
+      }
+      result.push(document);
     }
     for (const a of feed.attachments[course.code] || []) {
       // Do not send grade rows, submission history, rosters or binary files to the model.

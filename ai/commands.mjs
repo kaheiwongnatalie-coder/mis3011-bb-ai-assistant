@@ -10,7 +10,8 @@ export function compileCommand(value, state, runId) {
     let event;
     if (op.type === 'clarify') { questions.push(op.reason || op.title); continue; }
     if (['set_estimate', 'defer', 'pause', 'snooze'].includes(op.type) && !scratch.tasks.some(t => t.id === op.taskId)) throw new Error('自然语言调整未匹配到明确任务。');
-    if (op.type === 'add_busy' || op.type === 'remove_busy') {
+    if (op.type === 'replan') event = { id, type: 'PLAN_REQUESTED', rebuild: true };
+    else if (op.type === 'add_busy' || op.type === 'remove_busy') {
       if (!timeOK(op.start) || !timeOK(op.end)) throw new Error('忙碌时段需要明确、带时区的起止时间。');
       if (op.type === 'add_busy' && scratch.profile.busy.some(b => Date.parse(b.start) === Date.parse(op.start) && Date.parse(b.end) === Date.parse(op.end))) continue;
       const busy = op.type === 'add_busy' ? [...scratch.profile.busy, { title: op.title, start: op.start, end: op.end }]
@@ -40,10 +41,13 @@ export function compileCommand(value, state, runId) {
     events.push(event);
   }
   return { summary: value.summary, events, questions: [...new Set(questions)], plan: scratch.plan,
-    notifications: scratch.notifications, baseContext: taskContextKey(state), baseProfileVersion: state.profileVersion };
+    notifications: scratch.notifications, baseContext: taskContextKey(state), baseProfileVersion: state.profileVersion,
+    baseWorkspaceDate: state.workspaceDate ?? null };
 }
 
 export function applyCommand(state, compiled, run) {
+  if (compiled.questions.length) throw new Error('请先补充排程所需的信息。');
+  if ((compiled.baseWorkspaceDate ?? null) !== (state.workspaceDate ?? null)) throw new Error('工作区日期已变更，请重新预览调整。');
   if (compiled.baseContext !== taskContextKey(state) || compiled.baseProfileVersion !== state.profileVersion) throw new Error('任务或偏好在预览后变化，请重新分析调整，未应用过期结果。');
   let next = state;
   for (const event of compiled.events) next = applyEvent(next, event);

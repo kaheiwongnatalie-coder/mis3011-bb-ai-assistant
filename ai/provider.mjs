@@ -28,7 +28,8 @@ export function createProvider({ env = process.env, fetcher = fetch } = {}) {
     if (!config.consent) throw new Error('请先确认允许将选中的脱敏文本发送给所配置的模型服务。');
     const payload = { model: config.model, messages, temperature: 0.1, max_tokens: 6500 };
     // Course extraction uses non-thinking mode; no hidden reasoning token budget.
-    if (new URL(config.endpoint).hostname === 'api.deepseek.com') payload.thinking = { type: 'disabled' };
+    const host = new URL(config.endpoint).hostname;
+    if (host === 'api.deepseek.com') payload.thinking = { type: 'disabled' };
     if (config.format === 'json_schema') payload.response_format = { type: 'json_schema', json_schema: { name, strict: true, schema } };
     if (config.format === 'json_object') payload.response_format = { type: 'json_object' };
     const started = Date.now();
@@ -48,9 +49,14 @@ export function createProvider({ env = process.env, fetcher = fetch } = {}) {
       const value = JSON.parse(content.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
       return { value, meta: { transport: 'live_http', model: data.model || config.model,
         responseId: data.id || null, elapsedMs: Date.now() - started,
-        usage: data.usage || null, endpointHost: new URL(config.endpoint).hostname } };
+        usage: data.usage || null, endpointHost: host } };
     } catch (error) {
-      const message = error.name === 'TimeoutError' ? '模型调用超时，请减少材料后重试。' : error.message;
+      const code = error.cause?.code;
+      let message = error.message;
+      if (error.name === 'TimeoutError' || code === 'UND_ERR_CONNECT_TIMEOUT') message = '连接模型服务超时，请检查网络后重试。';
+      else if (['EACCES', 'EPERM'].includes(code)) message = `本地后台没有权限连接 ${host}。请用允许联网的方式启动后台，再测试连接。`;
+      else if (['ENOTFOUND', 'EAI_AGAIN'].includes(code)) message = `找不到模型服务 ${host}，请检查接口地址和网络。`;
+      else if (error instanceof TypeError && error.message === 'fetch failed') message = `无法连接模型服务 ${host}，请检查网络和接口地址，再测试连接。`;
       throw new Error(String(message).split(config.apiKey).join('[redacted]'));
     }
   }

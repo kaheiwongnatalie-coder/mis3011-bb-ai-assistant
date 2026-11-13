@@ -10,8 +10,10 @@ import { buildDocuments, documentsFromUpload } from './documents.mjs';
 export function createDocumentSource(feedRoot, inboxRoot) {
   return async () => {
     let feed, documents = [], errors = [];
-    try { feed = await loadFeed(feedRoot); documents = buildDocuments(feed); }
-    catch (e) { errors.push(`课程包读取失败：${e.message}`); }
+    if (feedRoot) {
+      try { feed = await loadFeed(feedRoot); documents = buildDocuments(feed); }
+      catch (e) { errors.push(`课程包读取失败：${e.message}`); }
+    }
     await mkdir(inboxRoot, { recursive: true });
     for (const name of (await readdir(inboxRoot)).filter(n => n.endsWith('.json')).sort()) {
       try {
@@ -31,11 +33,12 @@ export function createDocumentSource(feedRoot, inboxRoot) {
 
 export const emptyAutomation = () => ({ enabled: false, subscriptions: [], known: {}, pending: [], activity: [], lastScanAt: null, lastSuccessAt: null, sourceErrors: [] });
 const inScope = (doc, subscriptions) => subscriptions.some(s => s.courseCode === doc.courseCode && s.term === doc.term);
-const visible = (doc, state, settings) => !settings.replaySources || (doc.publishedAt && Date.parse(doc.publishedAt) <= Date.parse(state.now));
 const note = (a, entry) => { a.activity = [{ id: randomUUID(), ...entry }, ...a.activity].slice(0, 30); };
 const keyOf = d => `${d.courseCode}:${d.term}:${d.id}`;
 
-export function createAutomation({ readDocuments, ai, provider, clock = () => new Date().toISOString() }) {
+export function createAutomation({ readDocuments, ai, provider, clock = () => new Date().toISOString(), canSync = () => true }) {
+  const visible = (doc, state, settings) => canSync(doc, state) &&
+    (!settings.replaySources || (doc.publishedAt && Date.parse(doc.publishedAt) <= Date.parse(state.now)));
   async function configure(state, input) {
     const next = structuredClone(state), a = next.automation ||= emptyAutomation();
     if (input.enabled === false) { a.enabled = false; return next; }
@@ -49,13 +52,16 @@ export function createAutomation({ readDocuments, ai, provider, clock = () => ne
     }
     a.replaySources = input.replaySources ?? a.replaySources ?? false;
     a.subscriptions = subscriptions;
-    a.pending = a.pending.filter(p => inScope(p.document, subscriptions) && visible(p.document, state, a));
+    a.pending = a.pending.filter(p => inScope(p.document, subscriptions));
+    const queued = new Map(a.pending.map(p => [keyOf(p.document), p.document.version]));
     for (const doc of result.documents.filter(d => inScope(d, subscriptions) && visible(d, state, a))) {
-      if (inScope(doc, previous)) continue;
-      if (input.includeExisting && state.aiSources?.[doc.id]?.version !== doc.version) {
+      const key = keyOf(doc);
+      if (input.includeExisting && state.aiSources?.[doc.id]?.version !== doc.version && queued.get(key) !== doc.version) {
+        a.pending = a.pending.filter(p => keyOf(p.document) !== key);
         a.pending.push({ document: doc, attempts: 0, retryAt: null, error: null });
+        queued.set(key, doc.version);
       }
-      a.known[keyOf(doc)] = doc.version;
+      if (input.includeExisting || !inScope(doc, previous)) a.known[key] = doc.version;
     }
     a.enabled = true; a.sourceErrors = result.errors; a.lastScanAt = clock();
     if (next.mode === 'empty') { next.mode = 'live'; next.workspace = 'ai'; next.now = clock(); }
@@ -84,7 +90,8 @@ export function createAutomation({ readDocuments, ai, provider, clock = () => ne
   async function processNext(state) {
     const a = state.automation, info = provider.info();
     if (!a?.enabled || !info.configured || !info.consent) return state;
-    const entry = [...a.pending].filter(p => p.attempts < 3 && (!p.retryAt || Date.parse(p.retryAt) <= Date.parse(clock())))
+    const entry = [...a.pending].filter(p => visible(p.document, state, a) && p.attempts < 3 &&
+      (!p.retryAt || Date.parse(p.retryAt) <= Date.parse(clock())))
       .sort((x, y) => (x.document.publishedAt || '').localeCompare(y.document.publishedAt || ''))[0];
     if (!entry) return state;
     const doc = entry.document;
@@ -92,7 +99,7 @@ export function createAutomation({ readDocuments, ai, provider, clock = () => ne
     try {
       // One document per call keeps incremental relationships and model output
       // small. Every next call receives the actual result of the previous one.
-      if (next.mode === 'live') next.now = clock();
+      if (next.mode === 'live' && !next.workspaceDate) next.now = clock();
       else if (next.mode === 'replay' && doc.publishedAt && Date.parse(doc.publishedAt) > Date.parse(next.now)) {
         next = applyEvent(next, { id: `auto-clock:${doc.version}`, type: 'CLOCK_ADVANCED', to: doc.publishedAt });
       }

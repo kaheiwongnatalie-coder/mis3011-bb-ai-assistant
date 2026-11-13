@@ -32,7 +32,7 @@ export const commandSchema = object({
   summary: text,
   intent: choice(['apply', 'preview', 'clarify']),
   operations: list(object({
-    type: choice(['add_busy', 'remove_busy', 'set_estimate', 'defer', 'set_quiet', 'set_daily_limit', 'set_weekly_window', 'pause', 'snooze', 'clarify']),
+    type: choice(['add_busy', 'remove_busy', 'set_estimate', 'defer', 'set_quiet', 'set_daily_limit', 'set_weekly_window', 'pause', 'snooze', 'replan', 'clarify']),
     taskId: nullableText, start: nullableText, end: nullableText,
     minutes: nullableNumber, day: { type: ['integer', 'null'] },
     startClock: nullableText, endClock: nullableText, title: text, reason: text
@@ -41,3 +41,4 @@ export const commandSchema = object({
 });
 
 export const pingSchema = object({ ok: { type: 'boolean' }, message: text });
+export const chatSchema = object({ reply: text, operations: commandSchema.properties.operations, questions: list(text) });
