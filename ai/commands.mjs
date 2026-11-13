@@ -10,7 +10,7 @@ export function compileCommand(value, state, runId) {
     let event;
     if (op.type === 'clarify') { questions.push(op.reason || op.title); continue; }
     if (['set_estimate', 'defer', 'pause', 'snooze'].includes(op.type) && !scratch.tasks.some(t => t.id === op.taskId)) throw new Error('自然语言调整未匹配到明确任务。');
-    if (op.type === 'replan') event = { id, type: 'PLAN_REQUESTED', rebuild: true };
+    if (op.type === 'replan') event = { id, type: 'PLAN_REQUESTED' };
     else if (op.type === 'add_busy' || op.type === 'remove_busy') {
       if (!timeOK(op.start) || !timeOK(op.end)) throw new Error('忙碌时段需要明确、带时区的起止时间。');
       if (op.type === 'add_busy' && scratch.profile.busy.some(b => Date.parse(b.start) === Date.parse(op.start) && Date.parse(b.end) === Date.parse(op.end))) continue;
