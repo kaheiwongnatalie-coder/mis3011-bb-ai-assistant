@@ -1,10 +1,68 @@
 import { applyEvent, createState, reconcile, summarize, validateProfile } from '../core/engine.mjs';
 import { loadScenario, scenarioEvents, scenarios } from '../demo/scenarios.mjs';
 import { createTask } from '../core/model.mjs';
-import { ms, validTime } from '../core/time.mjs';
+import { localDate, ms, validTime } from '../core/time.mjs';
+
+function createStudentPreview(preview, storage) {
+  const key = 'bb-companion:student-preview:v1';
+  const create = (now, tasks) => {
+    const state = createState({now, mode:'replay', tasks});
+    state.planningEnabled = true;
+    return reconcile(state);
+  };
+  const { evidence, replay } = preview;
+  let state = create(evidence.now, evidence.tasks);
+  try {
+    const saved = JSON.parse(storage?.getItem(key) || 'null');
+    if (saved?.schemaVersion === 1 && saved.mode === 'replay' && validTime(saved.now) && Array.isArray(saved.tasks)) {
+      validateProfile(saved.profile);
+      state = reconcile(saved);
+    }
+  } catch { /* The included sample is used if saved browser data cannot be read. */ }
+  const view = () => structuredClone({ ...state, studentWorkspace:true, publicPreview:true, workspaceDate:localDate(state.now),
+    summary:summarize(state), aiConnection:{configured:false,consent:false} });
+  const commit = next => {
+    state = next;
+    try { storage?.setItem(key, JSON.stringify(state)); } catch { /* The current tab remains usable. */ }
+    return view();
+  };
+  async function request(path, body) {
+    if (body === undefined && ['/api/state','/api/export'].includes(path)) return view();
+    if (path === '/public/restore') return commit(create(evidence.now,evidence.tasks));
+    if (path === '/public/start-replay') {
+      return commit(create(replay.now,[replay.exam,...evidence.tasks.filter(task => task.id !== replay.finalExamId && task.kind !== 'tutorial')]));
+    }
+    if (path === '/public/release-update') {
+      if (!state.tasks.some(task => task.id === replay.exam.id)) throw new Error('请先载入改期前的课程资料。');
+      let next = state;
+      for (const event of replay.events) {
+        if (event.type === 'CLOCK_ADVANCED' && ms(event.to) <= ms(next.now)) continue;
+        next = applyEvent(next, event);
+      }
+      return commit(next);
+    }
+    if (path === '/api/events') {
+      let next = state;
+      for (const event of body.events || [body]) next = applyEvent(next, event);
+      return commit(next);
+    }
+    if (path === '/api/tasks') {
+      const title = String(body.title || '').trim(), courseCode = String(body.courseCode || '').trim();
+      if (!title || !courseCode || !validTime(body.deadline) || ms(body.deadline) <= ms(state.now)) throw new Error('请填写课程、任务名称和未来的截止时间。');
+      const id = crypto.randomUUID();
+      return commit(applyEvent(state, { id, type:'TASK_ADDED', task:{id:`manual:${id}`,title,courseCode,
+        term:localDate(state.now).slice(0,4), channel:'external', remainingMinutes:body.remainingMinutes, estimateOrigin:'user',
+        deadline:{at:body.deadline,date:localDate(body.deadline),precision:'minute',origin:'user_confirmed'}
+      }}));
+    }
+    throw new Error('请在本地学生版使用该功能。');
+  }
+  return { request };
+}
 
 // The public view reuses the exact core engine; AI results come from a captured run.
-export function createPublicWorkspace({ feed, evidence, storage = null }) {
+export function createPublicWorkspace({ feed, evidence, preview, storage = null }) {
+  if (preview) return createStudentPreview(preview, storage);
   const storageKey = 'bb-companion:public:v1';
   const initial = () => {
     const state = createState({ now: evidence.now, mode: 'replay', tasks: evidence.tasks });
