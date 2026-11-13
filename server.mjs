@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadFeed } from './core/load-feed.mjs';
 import { normalizeFeed } from './demo/feed-adapter.mjs';
@@ -159,10 +159,10 @@ export async function createApp({ feedRoot = join(ROOT, 'BB_Source_Feed'), state
       if (url.pathname === '/api/source') {
         const relative = url.searchParams.get('path') || '';
         file = resolve(feedRoot, relative);
-        if (!file.startsWith(`${resolve(feedRoot)}/`) || !['.json', '.pdf', '.txt'].includes(extname(file))) return json(res, 404, { error: '没有可用的本地来源。' });
+        if (!file.startsWith(`${resolve(feedRoot)}${sep}`) || !['.json', '.pdf', '.txt'].includes(extname(file))) return json(res, 404, { error: '没有可用的本地来源。' });
       } else if (url.pathname.startsWith('/core/')) {
         file = resolve(ROOT, `.${url.pathname}`);
-        if (!file.startsWith(`${ROOT}/core/`)) return json(res, 404, { error: 'Not found' });
+        if (!file.startsWith(`${join(ROOT, 'core')}${sep}`)) return json(res, 404, { error: 'Not found' });
       } else {
         const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
         if (!['index.html', 'app.mjs', 'ai-panel.mjs', 'style.css'].includes(name)) return json(res, 404, { error: 'Not found' });
