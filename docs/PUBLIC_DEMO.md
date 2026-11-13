@@ -50,6 +50,12 @@ node scripts/automation-demo.mjs eco
 
 `new` 备份并切换验收工作区，后续命令推进到真实公告的发布时间，由后台自动识别更新。完整带断言的复测使用 `node scripts/live-automation-eval.mjs`；当前工作区保留验收结果时，可使用 `node scripts/export-ai-example.mjs` 导出样例。
 
+## 模拟 Blackboard 接入（离线）
+
+在项目根目录运行 `node scripts/mock-bb-demo.mjs --serve`，然后打开 `http://127.0.0.1:4175/#tasks`。只想在终端验收时，运行 `node scripts/mock-bb-demo.mjs`，检查通过后会自动退出。
+
+后台按历史发布时间读取 `BB_Source_Feed/courses/` 中的原始公告，使用仓库中保存的模型响应重新生成任务、排程和提醒。本次运行不连接 Blackboard 或模型服务。演示验证 CSC1001 考试改期、旧提醒撤销、ECO3121 作业进入计划，以及相同公告去重。点开任务的「来源」可以查看公告片段和原文件。
+
 ## 本地构建与更新
 
 Node.js 22+，在项目目录执行：
