@@ -18,12 +18,13 @@ const monthWord = '(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e
 export function extractDeadline(text, year) {
   const lines = text.split(/\n|(?<=[.!])\s+(?=[A-Z])/).filter(line => /\bdue\b|deadline/i.test(line));
   for (const line of lines) {
-    const forward = line.match(new RegExp(`${monthWord}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*\\([^)]*\\))?(?:\\s*,?\\s*(20\\d{2}))?`, 'i'));
-    const reverse = line.match(new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*${monthWord}\\.?(?:\\s*\\([^)]*\\))?(?:\\s*,?\\s*(20\\d{2}))?`, 'i'));
-    const match = forward || reverse;
+    const forward = line.match(new RegExp(`\\b${monthWord}\\.?\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s*\\([^)]*\\))?(?:\\s*,?\\s*(20\\d{2}))?`, 'i'));
+    const reverse = line.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*${monthWord}\\.?(?:\\s*\\([^)]*\\))?(?:\\s*,?\\s*(20\\d{2}))?`, 'i'));
+    const monthFirst = forward && (!reverse || forward.index <= reverse.index);
+    const match = monthFirst ? forward : reverse;
     if (!match) continue;
-    const month = months[(forward ? match[1] : match[2]).slice(0, 3).toLowerCase()];
-    const day = Number(forward ? match[2] : match[1]);
+    const month = months[(monthFirst ? match[1] : match[2]).slice(0, 3).toLowerCase()];
+    const day = Number(monthFirst ? match[2] : match[1]);
     const resolvedYear = Number(match[3] || year);
     const date = `${resolvedYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     if (!validTime(atLocal(date, '12:00')) || localDate(atLocal(date, '12:00')) !== date) continue;
