@@ -50,6 +50,22 @@ test('new raw source automatically creates tasks, plan and reminder queue, witho
   assert.equal(s.aiRuns[0].trigger, 'source_update'); assert.equal(s.automation.pending.length, 0);
   assert.equal(s.aiRuns[0].transport, 'test_double');
 });
+
+test('including existing sources requeues a baselined document without duplicating queued or processed versions', async () => {
+  const x = setup();
+  x.setDocs([document()]);
+  let state = await x.start(x.initial());
+  const includeExisting = { subscriptions: [subscription], includeExisting: true };
+  assert.equal(state.automation.pending.length, 0);
+  state = await x.auto.configure(state, includeExisting);
+  state = await x.auto.configure(state, includeExisting);
+  assert.equal(state.automation.pending.length, 1);
+  state = await x.tick(state);
+  state = await x.auto.configure(state, includeExisting);
+  assert.equal(state.automation.pending.length, 0);
+  assert.equal(x.provider.calls.length, 1);
+  assert.equal(state.tasks.length, 1);
+});
 test('unchanged versions do not call AI, including after JSON persistence and restoration', async () => {
   const x = setup(); let s = await x.start(x.initial()); x.setDocs([document()]); s = await x.tick(s);
   const count = s.events.length; s = await x.tick(JSON.parse(JSON.stringify(s))); s = await x.tick(s);
