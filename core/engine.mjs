@@ -75,7 +75,6 @@ export function applyEvent(current, event) {
     case 'PLAN_REQUESTED':
       if (state.mode === 'snapshot') throw new Error('完整历史快照只供查看，请载入历史回放场景或导入当前任务后再规划。');
       state.planningEnabled = true;
-      if (event.rebuild) state.plan.blocks = state.plan.blocks.filter(block => block.locked);
       break;
     case 'CLOCK_ADVANCED': {
       if (state.mode !== 'replay') throw new Error('只有历史回放模式可以手动推进时钟。');
