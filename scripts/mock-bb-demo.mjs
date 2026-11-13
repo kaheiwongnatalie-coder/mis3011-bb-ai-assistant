@@ -12,7 +12,7 @@ const data = await loadReplayData();
 const saved = JSON.parse(await readFile(new URL('../examples/automation-live-output.json', import.meta.url), 'utf8'));
 const runsByDocument = new Map(saved.modelRuns.map(run => [run.documents[0].id, run]));
 const seen = [];
-const replayInfo = { configured: true, consent: true, keyStored: false, model: '已保存的模型响应（离线回放）' };
+const replayInfo = { configured: true, consent: true, keyStored: false, replayOnly: true, model: '已保存的模型响应（离线回放）' };
 const provider = {
   info: () => replayInfo,
   configure() { throw new Error('这是独立的离线演示，请到正式服务配置模型。'); },

@@ -38,7 +38,7 @@ try{
   await page.locator('#auto-scopes').fill('CSC1001 2024');await page.locator('[form="automation-form"]').click();await page.locator('dialog').waitFor({state:'hidden'});
   assert.equal(calls.length,0);checks.push('跟进设置默认来自原始包五门课程，尚未发布的公告不会提前解析');
   await post('/api/events',{id:'native-old-source',type:'CLOCK_ADVANCED',to:data.initial.publishedAt});
-  await page.locator('.task-title').waitFor({timeout:10000});let s=await state();const exam=s.tasks.find(t=>t.kind==='exam');assert.ok(s.plan.blocks.some(b=>b.taskId===exam.id));
+  await page.locator('.task-list .task-title').waitFor({timeout:10000});let s=await state();const exam=s.tasks.find(t=>t.kind==='exam');assert.ok(s.plan.blocks.some(b=>b.taskId===exam.id));
   checks.push('原始公告到达后页面自动出现真实 CSC1001 考试与准备安排，无材料上传或手动分析');
   await page.locator('[data-action="detail"]').first().click();await page.getByText('来源 ·',{exact:false}).click();
   assert.match(await page.locator('dialog').innerText(),/ann\[16\]/);assert.match(await page.locator('dialog pre').innerText(),/Nov\. 1/);

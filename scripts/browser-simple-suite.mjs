@@ -19,15 +19,22 @@ export async function runBrowserChecks() {
     await page.waitForFunction(()=>document.body.dataset.busy!=='true');return result;
   }
   async function nav(tab){await click(`nav a[data-tab="${tab}"]`);await page.waitForFunction(t=>document.querySelector('#main').dataset.tab===t,tab);}
-  async function scenario(id){await click('[data-action="scenarios"]');await page.locator(`[name="scenario"][value="${id}"]`).check();return post('[form="scenario-form"]','/api/import');}
+  async function openScenarios(){
+    await click('[data-action="settings"]');
+    await click('[data-ai-action="tools"]');
+    await click('[data-action="scenarios"]');
+  }
+  async function scenario(id){await openScenarios();await page.locator(`[name="scenario"][value="${id}"]`).check();return post('[form="scenario-form"]','/api/import');}
   async function noOverflow(label){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),label);}
   async function shot(name,selector){await (selector?page.locator(selector):page).screenshot({path:output+name,...(selector?{}:{fullPage:true})});}
   try{
     await mkdir(output,{recursive:true});await page.goto(base+'/#overview');await page.locator('main .heading').waitFor();
-    assert.equal(await page.locator('nav a').count(),3);assert.equal(await page.locator('dialog').count(),1);
+    assert.equal(await page.locator('nav a').count(),4);assert.equal(await page.locator('dialog').count(),1);
+    assert.equal(await page.locator('[data-action="scenarios"]').count(),0);
+    for(const id of ['overview-tasks','overview-plan','overview-reminders']) await page.locator('#'+id).waitFor();
     assert.equal((await page.locator('main').innerText()).includes('AI 边界'),false);
-    await shot('simple-welcome.png');checks.push('三个主导航、一个对话框；首页没有设置、日志和多层说明');
-      let s=await post('[data-action="quick-demo"]','/api/import');assert.equal(s.tasks.length,2);
+    await shot('simple-welcome.png');checks.push('首页同时显示任务、计划和提醒，经典演示从设置进入');
+      let s=await scenario('submission');assert.equal(s.tasks.length,2);
       s=await post('[data-action="plan"]','/api/events');assert.ok(s.plan.blocks.length);await nav('tasks');
       await shot('simple-tasks.png');checks.push('一键体验两项作业，下一步按钮生成实际计划');
       await click('[data-action="detail"]');await page.locator('#task-dialog[open]').waitFor();
@@ -56,10 +63,10 @@ export async function runBrowserChecks() {
       s=await post('[data-action="demo-event"]','/api/demo/event');assert.equal(s.tasks.find(t=>t.kind==='presentation').status.value,'unknown');
       checks.push('分班、设备和上传／展示分离保留在精简界面中');
     await page.setViewportSize({width:390,height:844});
-    for(const t of ['tasks','plan','reminders']){await nav(t);await noOverflow('mobile '+t);}
+    for(const t of ['overview','tasks','plan','reminders']){await nav(t);await noOverflow('mobile '+t);}
     await nav('tasks');await shot('simple-mobile.png');await click('[data-action="settings"]');await noOverflow('mobile settings');await page.keyboard.press('Escape');
-    await click('[data-action="scenarios"]');await noOverflow('mobile scenarios');await page.keyboard.press('Escape');
-    checks.push('390px 手机端三个页面与设置／演示窗口无横向溢出');
+    await openScenarios();await noOverflow('mobile scenarios');await page.keyboard.press('Escape');
+    checks.push('390px 手机端四个页面与设置／演示窗口无横向溢出');
     assert.deepEqual(errors,[]);
     const report={testType:'real-course-core-flows',actualModelTest:false,passed:checks.length,checks,browserErrors:errors};
     await writeFile(output+'browser-report.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
